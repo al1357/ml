@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>MathJax example</title>
+    <script type="text/javascript" async
+    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML" async>
+    </script>
+    <script type="text/javascript">
+        window.onload = function() {
+            MathJax.Hub.Config({
+                showProcessingMessages: true,
+                jax: ["input/TeX", "output/HTML-CSS"],
+                displayAlign: "left",
+            });
+        }
+    </script>
+    <style>
+        .col { float:left;  margin-right:25px;}
+        .col .head { width:100%; text-align:center; color:#4c4c4c; padding-bottom:5px; }
+        .col .top { }
+        .col .bottom { padding-top:20px; padding-right:25px; border:1px dashed #000; border-width:0 1px 0 0; }
+        .bottom .section { padding:10px 0 0 0; border-bottom:1px dashed #000; }
+        .first .top:after { content:""; clear:both; display:block; }
+        .first .top span { border: 1px solid #000; float:left; padding:5px; clear:left; margin: 5px;}
+        .top .formula { border:1px solid #000; padding:0 10px; }
+        .circle { display:inline-block; text-transform: uppercase; font-size: 12px; border:1px solid #000; border-radius:50%; padding:5px; }
+        .other-notes { margin-top:200px; }
+    </style>
+</head>
+<body>
+    <!-- input data -->
+    <div class="col first">
+        <div class="top">
+            <span>X</span>
+            <span>W</span>
+            <span>b</span>
+        </div>
+        <div class="bottom">
+            <div class="section">
+            Example<br /> dim.:<br /><br />
+            \(X - 5 \times m\)<br />
+            \( l^{[1]} - 6 \)<br />
+            \( l^{[2]} - 1 \)<br />
+            </div>
+        </div>
+    </div>
+    
+    <!-- first hidden layer linear -->
+    <div class="col">
+        <div class="head">A</div>
+        <div class="top">
+            <div class="formula">
+                $$z^{[1]} = W^{[1]} \times x + b^{[1]}$$
+            </div>
+            <div class="arrow"></div>
+        </div>
+        <div class="bottom">
+            <div class="section">
+                <span class="circle">1a</span>
+                $$dz^{[1]} = W^{[2]T} \times dz^{[2]} * g'(z^{[1]})$$
+                $$\because$$
+                $$dz^{[1]} = \frac{d \alpha}{dz^{[1]}} = \frac{d \alpha}{dz^{[2]}} \times \frac{dz^{[2]}}{da^{[1]}} \times \frac{da^{[1]}}{dz^{[1]}}$$ 
+                $$= \frac{d \alpha}{dz^{[2]}} \times W^{[2]} * g'(z^{[1]})$$
+                \(dz^{[1]}\) =  \(W^{[2]T}\) \(\times\) <span class="circle">1c</span> * <span class="circle">1b</span>
+                <br /><br />
+            </div>
+            <div class="section">
+            <span class="circle">2a</span>
+                $$dW^{[1]} = dz^{[1]} \times x^{T}$$
+                $$\because$$
+                $$\frac{d \alpha}{dW^{[1]}} = \frac{d \alpha}{dz^{[1]}} \times \frac{dz^{[1]}}{dW^{[1]}}$$
+                $$\frac{dz^{[1]}}{dW^{[1]}} = x$$
+            </div>
+            <div class="section">
+                <span class="circle">3a</span>
+                $$db^{[1]} = dz^{[1]}$$
+                $$\because$$
+                $$\frac{d \alpha}{db^{[1]}} = \frac{d \alpha}{dz^{[1]}} \times \frac{dz^{[1]}}{db^{[1]}}$$
+                $$\frac{dz^{[1]}}{db^{[1]}} = 1 \therefore \frac{d \alpha}{db^{[1]}} = \frac{d \alpha}{dz^{[1]}} \times 1$$
+            </div>
+            <div class="section">
+            Dimensions:<br /><br />
+            $$z^{[1]} = 6 \times m$$
+            $$W^{[1]} = 6 \times 5$$
+            $$b^{[1]} = 6 \times 1$$
+            $$dz^{[1]} = 6 \times 1 @ 1 \times m * 6 \times m = 6 \times m$$
+            $$dW^{[1]} = 6 \times m @ m \times 5 = 6 \times 5$$
+            $$db^{[1]} = sum(6 \times m) = 6 \times 1$$
+            <br /><br />
+            </div>
+        </div>
+    </div>
+    
+    <!-- first hidden layer activation -->
+    <div class="col">
+        <div class="head">B</div>
+        <div class="top">
+            <div class="formula">
+                $$a^{[1]} = \sigma (z^{[1]})$$
+            </div>
+        </div>
+        <div class="bottom">
+            <div class="section">
+            <span class="circle">1b</span>
+            $$\frac{d}{d z^{[1]}} a^{[1]} = \frac{d}{d z^{[1]}} g(z^{[1]})$$
+            $$= g'(z^{[1]})$$
+            </div>
+            <div class="section">
+            Dimensions:<br /><br />
+            $$da^{[1]} = 6 \times m$$
+            <br /><br />
+            </div>
+        </div>
+    </div>
+    
+    <!-- second hidden layer linear -->
+    <div class="col">
+        <div class="head">C</div>
+        <div class="top">
+            <div class="formula">
+                $$z^{[2]} = W^{[2]} \times a^{[1]} + b^{[2]}$$
+            </div>
+        </div>
+        <div class="bottom">
+            <div class="section">
+                <span class="circle">1c</span>
+                $$dz^{[2]} = a^{[2]} - y$$
+                $$\because$$
+                $$dz^{[2]} = \frac{d \alpha}{dz^{[2]}} = \frac{d \alpha}{da^{[2]}} \times \frac{da^{[2]}}{dz^{[2]}} = \frac{d \alpha}{da^{[2]}} \times g'(z^{[2]})$$
+                \(dz^{[2]}\) = <span class="circle">1e</span> \( \times \) <span class="circle">1d</span>
+                <br /><br />
+            </div>
+            <div class="section">
+            <span class="circle">2c</span>
+                $$dW^{[2]} = dz^{[2]} \times a^{[1]T}$$
+                $$\because$$
+                $$\frac{d \alpha}{dW^{[2]}} = \frac{d \alpha}{dz^{[2]}} \times \frac{dz^{[2]}}{dW^{[2]}}$$
+                $$\frac{dz^{[2]}}{dW^{[2]}} = a^{[1]} \therefore \frac{d \alpha}{dW^{[2]}} = \frac{d \alpha}{dz^{[2]}} \times a^{1}$$
+            </div>
+            <div class="section">
+                <span class="circle">3c</span>
+                $$db^{[2]} = dz^{[2]}$$
+                $$\because$$
+                $$\frac{d \alpha}{db^{[2]}} = \frac{d \alpha}{dz^{[2]}} \times \frac{dz^{[2]}}{db^{[2]}}$$
+                $$\frac{dz^{[2]}}{db^{[2]}} = 1 \therefore \frac{d \alpha}{db^{[2]}} = \frac{d \alpha}{dz^{[2]}} * 1$$
+            </div>
+            <div class="section">
+            Dimensions:<br /><br />
+            $$z^{[2]} = 1 \times m$$
+            $$W^{[2]} = 1 \times 6$$
+            $$b^{[2]} = 1 \times 1$$
+            $$dz^{[2]} = 1 \times m - 1 \times m = 1 \times m$$
+            $$dW^{[2]} = 1 \times m @ m \times 6 = 1 \times 6$$
+            $$db^{[2]} = sum(1 \times m) = 1 \times 1$$
+            <br /><br />
+            </div>
+        </div>
+    </div>
+    
+    <!-- second hidden layer activation -->
+    <div class="col">
+        <div class="head">D</div>
+        <div class="top">
+            <div class="formula">
+                $$a^{[2]} = \sigma (z^{[2]})$$
+            </div>
+        </div>
+        <div class="bottom">
+            <div class="section">
+            $$g(z^{[2]}) = \sigma (z^{[2]}) = \frac{1}{1 + e^{-z^{[2]}}}$$
+            <span class="circle">1d</span>
+            $$\frac{d}{d z^{[2]}} a^{[2]} = \frac{d}{d z^{[2]}} g(z^{[2]})$$
+            $$= g'(z^{[2]}) = \frac{e^{-z^{[2]}}}{(e^{-z^{[2]}} + 1)^2}$$
+            </div>
+            <div class="section">
+            Dimensions:<br /><br />
+            $$da^{[2]} = 1 \times m$$ 
+            <br /><br />
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- loss fn -->
+    <div class="col">
+        <div class="head">E</div>
+        <div class="top">
+            <div class="formula">
+                $$loss = \alpha (a^{[2]}, y)$$
+            </div>
+        </div>
+        <div class="bottom">
+            <div class="section">
+            $$\alpha(a^{[2]}, y) = - ( ylog(a^{[2]} + (1-y)log(1-a^{[2]}) )$$
+            <br />
+            <span class="circle">1e</span>
+            $$\frac{d}{d a^{[2]}} \alpha (a, y) = -\frac{y}{a^{[2]}} + \frac{1-y}{1-a^{[2]}}$$
+            </div>
+            <div class="section">
+            Dimensions:<br /><br />
+            $$\alpha = 1 \times m => sum() => 1 \times 1$$
+            <br /><br />
+            </div>
+        </div>
+    </div>
+    
+    
+    <br style="clear:both;" /><br />
+    <div class="other-notes">
+        Notes: <br /><br />
+        - for the purpose of this sheet: $$\frac{\partial a}{\partial b} = \frac{da}{db}$$
+        
+        - how segment C.
+        
+        $$\frac{d \alpha}{dz^{[2]}} = \frac{d \alpha}{da} \times g'(z) = \left ( -\frac{y}{a^{[2]}} + \frac{1-y}{1-a^{[2]}} \right ) \times \left( \frac{e^{-z}}{(e^{-z} + 1)^2} \right )$$
+        
+        is transformed into
+        
+        $$a^{[2]} - y$$
+        ?
+    </div>
+</body>
+</html>
