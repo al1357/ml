@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width">
-    <title>MathJax example</title>
+    <title>Neural network - backpropagation</title>
     <script type="text/javascript" async
     src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML" async>
     </script>
@@ -17,6 +17,7 @@
         }
     </script>
     <style>
+        body { min-widht:1800px; }
         .col { float:left;  margin-right:25px;}
         .col .head { width:100%; text-align:center; color:#4c4c4c; padding-bottom:5px; }
         .col .top { }
@@ -177,6 +178,8 @@
             <span class="circle">1d</span>
             $$\frac{d}{d z^{[2]}} a^{[2]} = \frac{d}{d z^{[2]}} g(z^{[2]})$$
             $$= g'(z^{[2]}) = \frac{e^{-z^{[2]}}}{(e^{-z^{[2]}} + 1)^2}$$
+            $$= \frac{1}{1+e^{-z^{2}}}\left ( 1+\frac{1}{1-e^{-z^{2}}} \right ) $$
+            $$= a^{[2]}(1-a^{[2]})$$
             </div>
             <div class="section">
             Dimensions:<br /><br />
@@ -215,15 +218,6 @@
     <div class="other-notes">
         Notes: <br /><br />
         - for the purpose of this sheet: $$\frac{\partial a}{\partial b} = \frac{da}{db}$$
-        
-        - how segment C.
-        
-        $$\frac{d \alpha}{dz^{[2]}} = \frac{d \alpha}{da} \times g'(z) = \left ( -\frac{y}{a^{[2]}} + \frac{1-y}{1-a^{[2]}} \right ) \times \left( \frac{e^{-z}}{(e^{-z} + 1)^2} \right )$$
-        
-        is transformed into
-        
-        $$a^{[2]} - y$$
-        ?
     </div>
 </body>
 </html>
