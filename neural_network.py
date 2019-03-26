@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy import float64, int
 import math
+import copy
 """
 
 """
@@ -25,6 +26,8 @@ class neural_network:
     # z cache
     cache_z = []
     cache_a = []
+    cache_dw = {}
+    cache_db = {}
     # error cache iteration-error
     cache_train_error = []
     cache_test_error = []
@@ -34,6 +37,8 @@ class neural_network:
     weights = {}
     bias = {}
     buffer = {}
+    reg_lambda = 0
+    regularization = True
     
     def __init__(self, network_map=[], data_samples=[], labels=[], tct_split = [1, 0, 0], load_parameters=False):
         """
@@ -68,6 +73,7 @@ class neural_network:
         #end if
         
         self.alpha = 0.05
+        self.reg_lambda = 0.04
         
         self.normalize()
     #end
@@ -96,7 +102,7 @@ class neural_network:
                 self.weights[i] = np.loadtxt('weights_l'+str(i)+'.txt')
                 i = i + 1
             #end for
-            bias = np.loadtxt('bias.txt')
+            bias = np.loadtxt('bias.txt')            
         except Exception as e:
             print("Weights/bias file read error. Initializing random parameters.")
             print("Error msg: "+str(e))
@@ -128,7 +134,7 @@ class neural_network:
             previous_layer = l
             self.weights[i] = current_weights
             self.bias[i] = np.zeros((l, 1))
-            i += 1
+            i += 1            
     #end
     
     def normalize(self):
@@ -178,11 +184,24 @@ class neural_network:
             return
         #end if
         
-        loss = -(np.sum(labels*(np.log(pred)) + (1-labels)*(np.log(1-pred))) / self.m[kind])
+        if (self.regularization):
+            weights_sum = 0
+            for k in self.weights:
+                weights_sum += np.sum(self.weights[k])
+            reg = (self.reg_lambda * weights_sum) / (2 * self.m[kind])
+        else:
+            reg = 0
+            
+        loss = -(np.sum(labels*(np.log(pred)) + (1-labels)*(np.log(1-pred))) / self.m[kind]) + reg
         return loss
         
-    def forward_propagate(self, kind='train', weights=False, bias=False):
-        if kind == 'train' or kind == 'test' or kind == 'cv':
+    def forward_propagate(self, kind='train', weights=False, bias=False, data=False):
+        if data == False:
+            data = np.array([])
+             
+        if data.any() == True:
+            X = data    
+        elif kind == 'train' or kind == 'test' or kind == 'cv':
             X = self.data_samples[kind]
         else:
             return 0
@@ -224,40 +243,47 @@ class neural_network:
         #end if
         # e.g. range(2, 0) = [2, 1]
         n_depth = len(self.network_map)
+        self.cache_dw = {}
+        self.cache_db = {}
         prev_dz = []
         for i in range(n_depth, 0, -1):
             if i == n_depth:
-                #print(self.cache_a[i].shape)
-                #print(self.train_labels.shape)
+                # last layer
                 dz = (self.cache_a[i] - self.labels[kind])
             else:
                 # i = 1; s1 contain n1 neurons; (n1, m) = (n1, n2) x (n2, m) * (n1, m)
                 dz = np.dot(self.weights[i+1].T, prev_dz)*self.d_tanh(self.cache_z[i])
             prev_dz = dz
-            dw_temp = np.dot(dz, self.cache_a[i-1].T) / self.m[kind]
-            db_temp = np.sum(dz, axis=1, keepdims=True) / self.m[kind]
-            self.weights[i] = self.weights[i] - self.alpha*dw_temp
-            self.bias[i] = self.bias[i] - self.alpha*db_temp
+            self.cache_dw[i] = np.dot(dz, self.cache_a[i-1].T) / self.m[kind]
+            self.cache_db[i] = np.sum(dz, axis=1, keepdims=True) / self.m[kind]
+            # no regularization
+            if(self.regularization):
+                reg = (self.reg_lambda * self.weights[i]) / self.m[kind]
+            else:
+                reg = 0;
+            self.weights[i] = self.weights[i] - self.alpha * (self.cache_dw[i] + reg)
+            self.bias[i] = self.bias[i] - self.alpha * self.cache_db[i]
         #end for
     #end backPropagate
     
     def learn(self, gradient_check = False):
-        for i in range(0,9000):
+        for i in range(0,100000):
             ##print('----------------------------------------------')
             #print(i)
             self.forward_propagate()
-            # optional gradient check
-            if gradient_check == True:
-                train_error = self.get_train_error()
-                approx_error = self.get_approx_train_error()
-                error_diff = train_error-approx_error
             self.back_propagate()
-            if i%200 == 0:
+            # optional gradient check
+            if gradient_check == True and i%30000 == 0:
+                grad_diffs = self.check_gradients()
+                print(grad_diffs)
+            if i%1000 == 0:
                 self.cache_train_error.append(self.get_train_error())
                 ##self.cache_cv_error.append(self.loss())
                 self.cache_test_error.append(self.get_test_error())
                 self.cache_iterations.append(i)
         #end for
+        print("Last train error: ", self.cache_train_error[-1])
+        print("Last test error: ", self.cache_test_error[-1])
         plt.plot(self.cache_iterations, self.cache_train_error)
         plt.plot(self.cache_iterations, self.cache_test_error)
         plt.legend(['train error', 'test error'], loc='upper left')
@@ -265,8 +291,6 @@ class neural_network:
         plt.xlabel("iterations")
         plt.ylabel("error")
         plt.show()
-        print("Last train error: ",str(self.cache_train_error[-1]))
-        print("Last test error: ",str(self.cache_test_error[-1]))
         self.save_parameters()
     #end learn
     
@@ -284,9 +308,12 @@ class neural_network:
         return self.loss('cv', pred)
     #end
     
-    def predict(self, kind = 'train'):
-        self.forward_propagate(kind)
-        return self.cache_a[-1]
+    def predict(self, kind = 'train', custom_data=False, output="raw"):
+        self.forward_propagate(kind, data=custom_data)
+        if(output == "raw"):    
+            return self.cache_a[-1]
+        elif(output == "boolean"):
+            return (self.cache_a[-1] >= 0.5)
     #end predict
     
 # =============================================================================
@@ -301,31 +328,73 @@ class neural_network:
 #         Z = model(np.c_[xx.ravel(), yy.ravel()])
 #     #end
 # =============================================================================
-    def get_approx_train_error(self):
-        # forward propagate and calculate error
-        # WRONG - REWRITE
-        weights_copy_plus = np.copy(self.weights)
-        bias_copy_plus = np.copy(self.bias)
-        weights_copy_minus = np.copy(self.weights)
-        bias_copy_minus = np.copy(self.bias)
-        epsilon = 0.00001
-        for i in weights_copy_plus:
-            weights_copy_plus[i] = weights_copy_plus[i] + epsilon
-            bias_copy_plus[i] = bias_copy_plus[i] + epsilon
-            weights_copy_minus[i] = weights_copy_minus[i] - epsilon
-            bias_copy_minus[i] = bias_copy_minus[i] - epsilon
-        #end for
+    def check_gradients(self):
+        epsilon = 0.0000001 # 10^(-7) as recommended by Andrew Ng
+        theta_approx = np.array([])
+        theta_calc = np.array([])
+
+        # for each i(layer)
+        for i in range(len(self.weights), 0, -1):
+            
+            # calculate db and dW separately
+            for j in range(0,2):
+                if (j == 0):
+                    # derivative approximation for weights_i
+                    for x in range(0, self.weights[i].shape[1]):
+                        for y in range(0, self.weights[i].shape[0]):                            
+                            weights_copy_plus = copy.deepcopy(self.weights)
+                            bias_copy = copy.deepcopy(self.bias)
+                            weights_copy_minus = copy.deepcopy(self.weights)
+                            bias_copy = copy.deepcopy(self.bias)
+                            
+                            
+                            weights_copy_plus[i][y][x] = weights_copy_plus[i][y][x] + epsilon
+                            weights_copy_minus[i][y][x] = weights_copy_minus[i][y][x] - epsilon
+                            
+                            self.forward_propagate(weights=weights_copy_plus, bias=bias_copy)
+                            predict_plus = self.cache_a[-1]
+                            plus_err = self.loss('train', predict_plus)
+                                  
+                            self.forward_propagate(weights=weights_copy_minus, bias=bias_copy)
+                            predict_minus = self.cache_a[-1]
+                            minus_err = self.loss('train', predict_minus)
+          
+                            theta_approx = np.append(theta_approx, ((plus_err - minus_err) / (2 * epsilon)))
+                            theta_calc = np.append(theta_calc, self.cache_dw[i][y][x])
+                        # end for y
+                    # end for x
+                    
+                elif (j == 1):
+                    for x in range(i, self.bias[i].shape[0]):
+                        # derivative approximation for bias_i
+                        weights_copy = copy.deepcopy(self.weights)
+                        bias_copy_plus = copy.deepcopy(self.bias)
+                        weights_copy = copy.deepcopy(self.weights)
+                        bias_copy_minus = copy.deepcopy(self.bias)
+                        bias_copy_plus[i][x] = bias_copy_plus[i][x] + epsilon
+                        bias_copy_minus[i][x] = bias_copy_minus[i][x] - epsilon
+                        
+                        self.forward_propagate(weights=weights_copy, bias=bias_copy_plus)
+                        predict_plus = self.cache_a[-1]
+                        plus_err = self.loss('train', predict_plus)
+                              
+                        self.forward_propagate(weights=weights_copy, bias=bias_copy_minus)
+                        predict_minus = self.cache_a[-1]
+                        minus_err = self.loss('train', predict_minus)
+                        
+                        theta_approx = np.append(theta_approx, ((plus_err - minus_err) / (2 * epsilon)))
+                        theta_calc = np.append(theta_calc, self.cache_db[i][x])
+                    #end for x
+                #end if
+                
+             #end for range(0,2)
+        #end for range(self.weights.size, 0, -1)
         
-        self.forward_propagate(weights=weights_copy_plus, bias=bias_copy_plus)
-        predict_plus = self.cache_a[-1]
-        plus_err = self.loss('train', predict_plus)
+        euclidean_dist = np.linalg.norm(theta_approx - theta_calc)
+        norm = np.linalg.norm(theta_approx) + np.linalg.norm(theta_calc)
+        grad_diffs = (euclidean_dist / norm)
         
-        self.forward_propagate(weights=weights_copy_minus, bias=bias_copy_minus)
-        predict_minus = self.cache_a[-1]
-        minus_err = self.loss('train', predict_minus)
-        
-        approx_err = (plus_err - minus_err) / (2 * epsilon)
-        return approx_err
+        return grad_diffs
     #end check_gradient
     
     def round(self, num=0):

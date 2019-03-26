@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import neural_network as nn
+import test_nn as t_nn
 import custom_plot as cplt
 
 # load and prepare data #1 - minst
@@ -31,6 +32,7 @@ train_set = train_set.sample(frac=1).reset_index(drop=True)
 train_set.loc[train_set["Species"]=="Iris-setosa","Species"]=2
 train_set.loc[train_set["Species"]=="Iris-versicolor","Species"]=1
 train_set.loc[train_set["Species"]=="Iris-virginica","Species"]=0
+train_labels_text = np.array(["Virginica", "Versicolor", "Setosa"])
 
 # labels as integers 0-2
 train_labels_raw = np.array(train_set.iloc[:, 4]).reshape(train_set.shape[0],1).astype('uint8')
@@ -43,6 +45,23 @@ train_labels_bin[train_labels_raw.T, range(0, len(train_labels_raw))] = 1
 train_samples = np.array(train_set.iloc[:, :4]).T
 
 network_structure = [10, 5, 3]
+
+# train, cv, test sets
+tct = [0.6, 0.2, 0.2]
+
+my_data_in = np.array([[5, 3, 1, 0.1], [7, 1, 7, 1]]).T
+
+nn1 = nn.neural_network(network_structure, \
+                        train_samples, \
+                        train_labels_bin, \
+                        tct, \
+                        load_parameters=False)
+
+# nn1.check_gradients()
+nn1.learn(gradient_check=True)
+#ud = nn1.get_unrolled_derivatives()
+#nn1.initialize_parameters()
+local_nn1 = nn1.__dict__
 
 
 # =============================================================================
@@ -90,20 +109,22 @@ network_structure = [10, 5, 3]
 # =============================================================================
 
 
-# instantiate neural network
-tct = [0.6, 0.2, 0.2]
-nn1 = nn.neural_network(network_structure, train_samples, train_labels_bin, tct, load_parameters=False)
 # =============================================================================
-# normalized_samples = nn1.train_samples
-# plt.scatter(normalized_samples[0, :], normalized_samples[1, :], c=train_labels_raw.flatten(), s=40, cmap=plt.cm.Spectral)
-# plt.show()
-# plt.scatter(normalized_samples[2, :], normalized_samples[3, :], c=train_labels_raw.flatten(), s=40, cmap=plt.cm.Spectral)
-# plt.show()
+# # instantiate neural network
+# tct = [0.6, 0.2, 0.2]
+# nn1 = nn.neural_network(network_structure, train_samples, train_labels_bin, tct, load_parameters=False)
+# # =============================================================================
+# # normalized_samples = nn1.train_samples
+# # plt.scatter(normalized_samples[0, :], normalized_samples[1, :], c=train_labels_raw.flatten(), s=40, cmap=plt.cm.Spectral)
+# # plt.show()
+# # plt.scatter(normalized_samples[2, :], normalized_samples[3, :], c=train_labels_raw.flatten(), s=40, cmap=plt.cm.Spectral)
+# # plt.show()
+# # =============================================================================
+# nn1.learn()
+# train_err = nn1.get_train_error();
+# print("Training error: "+str(train_err))
+# cv_err = nn1.get_cv_error()
+# print("CV error: "+str(cv_err))
+# test_err = nn1.get_test_error()
+# print("Test error: "+str(test_err))
 # =============================================================================
-nn1.learn()
-train_err = nn1.get_train_error();
-print("Training error: "+str(train_err))
-cv_err = nn1.get_cv_error()
-print("CV error: "+str(cv_err))
-test_err = nn1.get_test_error()
-print("Test error: "+str(test_err))
