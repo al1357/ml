@@ -30,7 +30,7 @@ class neural_network:
     cache_db = {}
     # error cache iteration-error
     cache_train_error = []
-    cache_test_error = []
+    cache_cv_error = []
     cache_iterations = []
     # learing rate
     alpha = None
@@ -39,32 +39,36 @@ class neural_network:
     buffer = {}
     reg_lambda = 0
     regularization = True
+    data_min = 0
+    data_max = 0
     
-    def __init__(self, network_map=[], data_samples=[], labels=[], tct_split = [1, 0, 0], load_parameters=False):
+    def __init__(self, data_loader, \
+                     network_map=[], \
+                     load_parameters=False):
         """
             training/test sets dimensions are n x m
         """
         np.random.seed(3)
         self.network_map = network_map
+        self._dl = data_loader
         
-        all_data_m = data_samples.shape[1]
-        self.m['train'] = self.round(all_data_m * tct_split[0])
-        self.m['cv'] = self.round(all_data_m * tct_split[1])
-        self.m['test'] = self.round(all_data_m * tct_split[2])
-        self.n = data_samples.shape[0]
+        self.m['train'] = self._dl.get_x().shape[1]
+        self.m['cv'] = self._dl.get_x('cv').shape[1]
+        self.n = self._dl.get_x().shape[0]
         
-        self.data_samples['train'] = data_samples[:, 0:self.m['train']]
-        self.labels['train'] = labels[:, 0:self.m['train']]
-    
-        if self.m['cv'] != 0:
-            self.data_samples['cv'] = data_samples[:, self.m['train']:(self.m['train'] + self.m['cv'])]
-            self.labels['cv'] = labels[:, self.m['train']:(self.m['train'] + self.m['cv'])]
-            
-        if self.m['test'] != 0:
-            self.data_samples['test'] = data_samples[:, (self.m['train'] + self.m['cv']):]
-            self.labels['test'] = labels[:, (self.m['train'] + self.m['cv']):]
-        #end if
+        self.data_samples['train'] = self._dl.get_x()
+        self.labels['train'] = self._dl.get_y()
 
+        self.data_samples['cv'] = self._dl.get_x('cv')
+        self.labels['cv'] = self._dl.get_y('cv')
+        
+        train_min = np.min(self.data_samples['train'])
+        cv_min = np.min(self.data_samples['cv'])
+        self.data_min = train_min if train_min < cv_min else cv_min
+        train_max = np.max(self.data_samples['train'])
+        cv_max = np.max(self.data_samples['cv'])
+        self.data_max = train_max if train_max > cv_max else cv_max
+        
         # load saved parameters
         if load_parameters:
             self.load_parameters()
@@ -72,10 +76,11 @@ class neural_network:
             self.initialize_parameters('he')
         #end if
         
-        self.alpha = 0.05
-        self.reg_lambda = 0.04
+        self.alpha = 0.01
+        self.reg_lambda = 0.0001
         
-        self.normalize()
+        #self.normalize()
+        self.scale()
     #end
     
     def save_parameters(self):
@@ -137,18 +142,34 @@ class neural_network:
             i += 1            
     #end
     
+    def scale(self):
+        '''data between [0, 1]'''
+        self.data_samples['train'] = (self.data_samples['train'] - self.data_min) / (self.data_max - self.data_min)
+        self.data_samples['cv'] = (self.data_samples['cv'] - self.data_min) / (self.data_max - self.data_min)
+    #end scale
+    
     def normalize(self):
+        '''normal distribution; bell curve'''
         # calculate mean and variance only for training set; use them to normalize the rest
         mean = np.sum(self.data_samples['train'], axis=1, keepdims=True) / self.m['train']
+        self.data_samples['train'] = (self.data_samples['train'] - mean) / (self.data_max - self.data_min)
+        self.data_samples['cv'] = (self.data_samples['cv'] - mean) / (self.data_max - self.data_min)
+    #end normalize
+    
+    def standarize(self):
+        '''mean 0; variance 1'''   
+        mean = np.sum(self.data_samples['train'], axis=1, keepdims=True) / self.m['train']
+        # if variance is 0, e.g. feature is 0 for all samples, then Python returns divide by 0 warning
         variance = np.sum(self.data_samples['train']**2, axis=1, keepdims=True) / self.m['train']
         
         for ix in self.data_samples:
             self.data_samples[ix] = (self.data_samples[ix] - mean) / variance
             np.nan_to_num(self.data_samples[ix], False)
-    #end
+        #end for
+    #end standarize
     
     def sigmoid(self, z):
-        """Sigmoid function
+        """Sigmoid function - multi-label 
         prediciton: sigmoid >= 0.5 result 1; sigmoid < 0.5 result 0;
         """
         return 1 / (1 + np.exp(-z))
@@ -158,6 +179,18 @@ class neural_network:
         """ derivative of the sigmoid function """
         zPrim = self.sigmoid(z)
         return zPrim*(1-zPrim)
+    #end
+    
+    def softmax(self, z):
+        """softmax - multi-class, single-label
+        """
+        t = np.exp(z - np.max(z))
+        return t / np.sum(t)
+    #end
+    
+    def d_softmax(self, z):
+        softmax = self.softmax(z)
+        return softmax*(1-softmax)
     #end
     
     def tanh(self, z):
@@ -187,14 +220,44 @@ class neural_network:
         if (self.regularization):
             weights_sum = 0
             for k in self.weights:
-                weights_sum += np.sum(self.weights[k])
+                # L2
+                weights_sum += np.sum(np.square(self.weights[k]))
+                # L1
+                #weights_sum += np.sum(self.weights[k])
             reg = (self.reg_lambda * weights_sum) / (2 * self.m[kind])
         else:
             reg = 0
-            
-        loss = -(np.sum(labels*(np.log(pred)) + (1-labels)*(np.log(1-pred))) / self.m[kind]) + reg
-        return loss
+        ##binary cross-entropy    
+        #product_true = labels*pred
+        #product_false = (1-labels)*pred
+        #product_true = product_true[product_true!=0]
+        #product_false = product_false[product_false!=0]
+        #loss = -(np.sum((np.log(product_true)) + (np.log(1-product_false))) / self.m[kind]) + reg
+        ##loss = -(np.sum(labels*(np.log(pred)) + (1-labels)*(np.log(1-pred))) / self.m[kind]) + reg
         
+        ##categorical cross-entropy
+        product = labels*pred
+        loss = -(np.sum((np.log(product[product!=0]))) / self.m[kind]) + reg
+        
+        return loss
+    #end
+
+    def categorical_crossentropy(self):
+        print('cc')
+    #end
+    
+    def sparse_categorical_crossentropy(self):
+        print('scc')
+    #end
+    
+    def precision(self):
+        print('test')
+    #end
+    
+    def recall(self):
+        print('test')
+    #end
+
     def forward_propagate(self, kind='train', weights=False, bias=False, data=False):
         if data == False:
             data = np.array([])
@@ -227,8 +290,9 @@ class neural_network:
             # Save layerZ in cache for back prop
             self.cache_z.append(layer_z)
             if i == len(self.network_map):
-                # Last is sigmoid
-                layer_a = self.sigmoid(layer_z)
+                # Last is softmax/sigmoid
+                layer_a = self.softmax(layer_z)
+                #layer_a = self.sigmoid(layer_z)
             else:
                 # Non-last are tanh
                 layer_a = self.tanh(layer_z)
@@ -263,30 +327,31 @@ class neural_network:
                 reg = 0;
             self.weights[i] = self.weights[i] - self.alpha * (self.cache_dw[i] + reg)
             self.bias[i] = self.bias[i] - self.alpha * self.cache_db[i]
-        #end for
     #end backPropagate
     
     def learn(self, gradient_check = False):
-        for i in range(0,100000):
+        for i in range(0, 1000):
             ##print('----------------------------------------------')
             #print(i)
             self.forward_propagate()
             self.back_propagate()
             # optional gradient check
-            if gradient_check == True and i%30000 == 0:
+            if gradient_check == True and i != 0 and i%99999 == 0:
                 grad_diffs = self.check_gradients()
-                print(grad_diffs)
-            if i%1000 == 0:
-                self.cache_train_error.append(self.get_train_error())
-                ##self.cache_cv_error.append(self.loss())
-                self.cache_test_error.append(self.get_test_error())
+                print("Gradient chack after %1d iterations: %10.10f" % (i, grad_diffs))
+            if i%10 == 0:
+                training_error = self.get_train_error()
+                print("Training error after %1d iterations: %10.10f" % (i, training_error))
+                self.cache_train_error.append(training_error)
+                self.cache_cv_error.append(self.get_cv_error())
+                #self.cache_test_error.append(self.get_test_error())
                 self.cache_iterations.append(i)
         #end for
         print("Last train error: ", self.cache_train_error[-1])
-        print("Last test error: ", self.cache_test_error[-1])
+        print("Last cv error: ", self.cache_cv_error[-1])
         plt.plot(self.cache_iterations, self.cache_train_error)
-        plt.plot(self.cache_iterations, self.cache_test_error)
-        plt.legend(['train error', 'test error'], loc='upper left')
+        plt.plot(self.cache_iterations, self.cache_cv_error)
+        plt.legend(['train error', 'cv error'], loc='upper left')
         plt.title("Error vs iterations")
         plt.xlabel("iterations")
         plt.ylabel("error")
@@ -338,6 +403,7 @@ class neural_network:
             
             # calculate db and dW separately
             for j in range(0,2):
+                
                 if (j == 0):
                     # derivative approximation for weights_i
                     for x in range(0, self.weights[i].shape[1]):
@@ -351,6 +417,7 @@ class neural_network:
                             weights_copy_plus[i][y][x] = weights_copy_plus[i][y][x] + epsilon
                             weights_copy_minus[i][y][x] = weights_copy_minus[i][y][x] - epsilon
                             
+                            # todo: to improve speed don't calculate on all training samples
                             self.forward_propagate(weights=weights_copy_plus, bias=bias_copy)
                             predict_plus = self.cache_a[-1]
                             plus_err = self.loss('train', predict_plus)
@@ -362,6 +429,8 @@ class neural_network:
                             theta_approx = np.append(theta_approx, ((plus_err - minus_err) / (2 * epsilon)))
                             theta_calc = np.append(theta_calc, self.cache_dw[i][y][x])
                         # end for y
+                        if x%100 == 0:
+                            print("GC count; weights x: ", x)
                     # end for x
                     
                 elif (j == 1):
@@ -385,11 +454,13 @@ class neural_network:
                         theta_approx = np.append(theta_approx, ((plus_err - minus_err) / (2 * epsilon)))
                         theta_calc = np.append(theta_calc, self.cache_db[i][x])
                     #end for x
+                    print("GC count; bias x: ", x)
                 #end if
-                
+
              #end for range(0,2)
         #end for range(self.weights.size, 0, -1)
         
+        #euclidean_dist = np.linalg.norm(theta_approx - theta_calc)
         euclidean_dist = np.linalg.norm(theta_approx - theta_calc)
         norm = np.linalg.norm(theta_approx) + np.linalg.norm(theta_calc)
         grad_diffs = (euclidean_dist / norm)
@@ -404,5 +475,5 @@ class neural_network:
             return math.floor(num)
         #else
     #end 
-#end NeuralNetwork
+#end neural_network
 

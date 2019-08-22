@@ -14,42 +14,41 @@ import custom_plot as cplt
 
 # load and prepare data #1 - minst
 #pandas.core.frame.DataFrame
+train_set = pd.read_csv("data/mnist_train.csv", header=None, memory_map=True, nrows=2000)
+train_samples = np.array(train_set.iloc[:, 1:]).T
+train_labels_raw = np.array(train_set.iloc[:, 0])
+train_labels_bin = np.zeros((10, len(train_labels_raw)))
+train_labels_bin[train_labels_raw, range(0, len(train_labels_raw))] = 1
+network_structure = [500, 100, 10]
+tct = [0.8, 0.1, 0.1]
+
 # =============================================================================
-# train_set = pd.read_csv("mnist_train.csv", header=None, memory_map=True, nrows=3000)
-# train_samples = np.array(train_set.iloc[:, 1:]).T
-# train_labels_raw = np.array(train_set.iloc[:, 0])
-# train_labels_bin = np.zeros((10, len(train_labels_raw)))
-# train_labels_bin[train_labels_raw, range(0, len(train_labels_raw))] = 1
-# network_structure = [500, 100, 100, 10]
+# # load and prepare data #2 - Iris
+# # SepalLengthCm, SepalWidthCm, PetalLengthCm, PetalWidthCm, Species
+# train_set = pd.read_csv("data/iris.csv") #, header=None) #, memory_map=True)
+# # shuffle, reset index and drop the old index
+# train_set = train_set.sample(frac=1).reset_index(drop=True)
+# 
+# train_set.loc[train_set["Species"]=="Iris-setosa","Species"]=2
+# train_set.loc[train_set["Species"]=="Iris-versicolor","Species"]=1
+# train_set.loc[train_set["Species"]=="Iris-virginica","Species"]=0
+# train_labels_text = np.array(["Virginica", "Versicolor", "Setosa"])
+# 
+# # labels as integers 0-2
+# train_labels_raw = np.array(train_set.iloc[:, 4]).reshape(train_set.shape[0],1).astype('uint8')
+#     
+# # binary labels
+# train_labels_bin = np.zeros((3, len(train_labels_raw)))
+# train_labels_bin[train_labels_raw.T, range(0, len(train_labels_raw))] = 1
+# 
+# # get train samples without labels
+# train_samples = np.array(train_set.iloc[:, :4]).T
+# 
+# network_structure = [10, 5, 3]
+# 
+# # train, cv, test sets
+# tct = [0.6, 0.2, 0.2]
 # =============================================================================
-
-# load and prepare data #2 - Iris
-# SepalLengthCm, SepalWidthCm, PetalLengthCm, PetalWidthCm, Species
-train_set = pd.read_csv("data/iris.csv") #, header=None) #, memory_map=True)
-# shuffle, reset index and drop the old index
-train_set = train_set.sample(frac=1).reset_index(drop=True)
-
-train_set.loc[train_set["Species"]=="Iris-setosa","Species"]=2
-train_set.loc[train_set["Species"]=="Iris-versicolor","Species"]=1
-train_set.loc[train_set["Species"]=="Iris-virginica","Species"]=0
-train_labels_text = np.array(["Virginica", "Versicolor", "Setosa"])
-
-# labels as integers 0-2
-train_labels_raw = np.array(train_set.iloc[:, 4]).reshape(train_set.shape[0],1).astype('uint8')
-    
-# binary labels
-train_labels_bin = np.zeros((3, len(train_labels_raw)))
-train_labels_bin[train_labels_raw.T, range(0, len(train_labels_raw))] = 1
-
-# get train samples without labels
-train_samples = np.array(train_set.iloc[:, :4]).T
-
-network_structure = [10, 5, 3]
-
-# train, cv, test sets
-tct = [0.6, 0.2, 0.2]
-
-my_data_in = np.array([[5, 3, 1, 0.1], [7, 1, 7, 1]]).T
 
 nn1 = nn.neural_network(network_structure, \
                         train_samples, \
@@ -57,10 +56,7 @@ nn1 = nn.neural_network(network_structure, \
                         tct, \
                         load_parameters=False)
 
-# nn1.check_gradients()
 nn1.learn(gradient_check=True)
-#ud = nn1.get_unrolled_derivatives()
-#nn1.initialize_parameters()
 local_nn1 = nn1.__dict__
 
 
