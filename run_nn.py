@@ -1,9 +1,7 @@
 import neural_network as nn
 import data_loader
-'''
-To do:
-    - re-check back propagation algorithm by hand. Softmax does not work correctly - error grows.
-'''
+
+
 dl = data_loader.data_loader([0.3, 0])
 dl.load_iris()
 

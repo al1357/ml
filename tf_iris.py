@@ -25,7 +25,7 @@ model.compile(optimizer='sgd',
               loss='categorical_crossentropy', 
               metrics = ['accuracy'])
 
-model.fit(x_train, y_train, epochs=10)
+model.fit(x_train, y_train, epochs=2000)
 
 ev_res = model.evaluate(x_cv, y_cv, verbose=1)
 print(model.metrics_names)

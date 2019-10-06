@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy import float64, int
 import math
-import copy
+import performance_measure as pm
 """
 
 """
@@ -38,9 +38,14 @@ class neural_network:
     bias = {}
     buffer = {}
     reg_lambda = 0
-    regularization = True
+    regularization = False
     data_min = 0
     data_max = 0
+    performance_measure = None
+    last_layer_af = "softmax"
+    iterations = 2000
+    alpha = 0.1
+    reg_lambda = 0.0001
     
     def __init__(self, data_loader, \
                      network_map=[], \
@@ -68,6 +73,7 @@ class neural_network:
         train_max = np.max(self.data_samples['train'])
         cv_max = np.max(self.data_samples['cv'])
         self.data_max = train_max if train_max > cv_max else cv_max
+        self.performance_measure = pm.performance_measure(self)
         
         # load saved parameters
         if load_parameters:
@@ -75,9 +81,6 @@ class neural_network:
         else:   
             self.initialize_parameters('he')
         #end if
-        
-        self.alpha = 0.01
-        self.reg_lambda = 0.0001
         
         #self.normalize()
         self.scale()
@@ -185,7 +188,8 @@ class neural_network:
         """softmax - multi-class, single-label
         """
         t = np.exp(z - np.max(z))
-        return t / np.sum(t)
+        #t = np.exp(z)
+        return t / np.sum(t, axis=0)
     #end
     
     def d_softmax(self, z):
@@ -202,60 +206,6 @@ class neural_network:
     
     def d_tanh(self, z):
         return 1 - np.power(self.tanh(z), 2)
-    #end
-    
-    def loss(self, kind='train', pred = None):
-        if kind == 'train' or kind == 'test' or kind == 'cv':
-            labels = self.labels[kind]
-        else:
-            return 0
-        #end if
-        
-        if kind == 'train':
-            pred = self.cache_a[-1]
-        elif pred is None:
-            return
-        #end if
-        
-        if (self.regularization):
-            weights_sum = 0
-            for k in self.weights:
-                # L2
-                weights_sum += np.sum(np.square(self.weights[k]))
-                # L1
-                #weights_sum += np.sum(self.weights[k])
-            reg = (self.reg_lambda * weights_sum) / (2 * self.m[kind])
-        else:
-            reg = 0
-        ##binary cross-entropy    
-        #product_true = labels*pred
-        #product_false = (1-labels)*pred
-        #product_true = product_true[product_true!=0]
-        #product_false = product_false[product_false!=0]
-        #loss = -(np.sum((np.log(product_true)) + (np.log(1-product_false))) / self.m[kind]) + reg
-        ##loss = -(np.sum(labels*(np.log(pred)) + (1-labels)*(np.log(1-pred))) / self.m[kind]) + reg
-        
-        ##categorical cross-entropy
-        product = labels*pred
-        loss = -(np.sum((np.log(product[product!=0]))) / self.m[kind]) + reg
-        
-        return loss
-    #end
-
-    def categorical_crossentropy(self):
-        print('cc')
-    #end
-    
-    def sparse_categorical_crossentropy(self):
-        print('scc')
-    #end
-    
-    def precision(self):
-        print('test')
-    #end
-    
-    def recall(self):
-        print('test')
     #end
 
     def forward_propagate(self, kind='train', weights=False, bias=False, data=False):
@@ -291,11 +241,15 @@ class neural_network:
             self.cache_z.append(layer_z)
             if i == len(self.network_map):
                 # Last is softmax/sigmoid
-                layer_a = self.softmax(layer_z)
-                #layer_a = self.sigmoid(layer_z)
+                if self.last_layer_af == "softmax":
+                    layer_a = self.softmax(layer_z)
+                else:
+                    layer_a = self.sigmoid(layer_z)
+                #end if
             else:
-                # Non-last are tanh
+                # Non-last are tanh/sigmoid
                 layer_a = self.tanh(layer_z)
+            #end if
             np.nan_to_num(layer_a, False)
             self.cache_a.append(layer_a)
         #end for
@@ -312,7 +266,7 @@ class neural_network:
         prev_dz = []
         for i in range(n_depth, 0, -1):
             if i == n_depth:
-                # last layer
+                # last layer sigmoid / softmax
                 dz = (self.cache_a[i] - self.labels[kind])
             else:
                 # i = 1; s1 contain n1 neurons; (n1, m) = (n1, n2) x (n2, m) * (n1, m)
@@ -330,16 +284,16 @@ class neural_network:
     #end backPropagate
     
     def learn(self, gradient_check = False):
-        for i in range(0, 1000):
+        for i in range(0, self.iterations):
             ##print('----------------------------------------------')
             #print(i)
             self.forward_propagate()
             self.back_propagate()
             # optional gradient check
-            if gradient_check == True and i != 0 and i%99999 == 0:
-                grad_diffs = self.check_gradients()
+            if gradient_check == True and i != 0 and i%1000 == 0:
+                grad_diffs = self.performance_measure.check_gradients()
                 print("Gradient chack after %1d iterations: %10.10f" % (i, grad_diffs))
-            if i%10 == 0:
+            if i%50 == 0:
                 training_error = self.get_train_error()
                 print("Training error after %1d iterations: %10.10f" % (i, training_error))
                 self.cache_train_error.append(training_error)
@@ -347,6 +301,9 @@ class neural_network:
                 #self.cache_test_error.append(self.get_test_error())
                 self.cache_iterations.append(i)
         #end for
+        
+        self.performance_measure.performance('cv')
+        
         print("Last train error: ", self.cache_train_error[-1])
         print("Last cv error: ", self.cache_cv_error[-1])
         plt.plot(self.cache_iterations, self.cache_train_error)
@@ -361,16 +318,16 @@ class neural_network:
     
     def get_train_error(self):
         pred = self.predict('train')
-        return self.loss('train', pred)
+        return self.performance_measure.loss('train', pred)
     
     def get_test_error(self):
         pred = self.predict('test')
-        return self.loss('test', pred)
+        return self.performance_measure.loss('test', pred)
     #end
     
     def get_cv_error(self):
         pred = self.predict('cv')
-        return self.loss('cv', pred)
+        return self.performance_measure.loss('cv', pred)
     #end
     
     def predict(self, kind = 'train', custom_data=False, output="raw"):
@@ -380,93 +337,6 @@ class neural_network:
         elif(output == "boolean"):
             return (self.cache_a[-1] >= 0.5)
     #end predict
-    
-# =============================================================================
-#     # ToDo
-#     def plot_decision_boundary(self):
-#         x_min, x_max = self.train_samples[0, :].min() - 0.25, self.train_samples[0, :].max() + 0.25
-#         y_min, y_max = self.train_labels[0, :].min() - 0.25, self.train_labels[0, :].max() + 0.25
-#         # Draw a grid
-#         h = 0.01
-#         xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
-#         # Predict the function value for the whole grid
-#         Z = model(np.c_[xx.ravel(), yy.ravel()])
-#     #end
-# =============================================================================
-    def check_gradients(self):
-        epsilon = 0.0000001 # 10^(-7) as recommended by Andrew Ng
-        theta_approx = np.array([])
-        theta_calc = np.array([])
-
-        # for each i(layer)
-        for i in range(len(self.weights), 0, -1):
-            
-            # calculate db and dW separately
-            for j in range(0,2):
-                
-                if (j == 0):
-                    # derivative approximation for weights_i
-                    for x in range(0, self.weights[i].shape[1]):
-                        for y in range(0, self.weights[i].shape[0]):                            
-                            weights_copy_plus = copy.deepcopy(self.weights)
-                            bias_copy = copy.deepcopy(self.bias)
-                            weights_copy_minus = copy.deepcopy(self.weights)
-                            bias_copy = copy.deepcopy(self.bias)
-                            
-                            
-                            weights_copy_plus[i][y][x] = weights_copy_plus[i][y][x] + epsilon
-                            weights_copy_minus[i][y][x] = weights_copy_minus[i][y][x] - epsilon
-                            
-                            # todo: to improve speed don't calculate on all training samples
-                            self.forward_propagate(weights=weights_copy_plus, bias=bias_copy)
-                            predict_plus = self.cache_a[-1]
-                            plus_err = self.loss('train', predict_plus)
-                                  
-                            self.forward_propagate(weights=weights_copy_minus, bias=bias_copy)
-                            predict_minus = self.cache_a[-1]
-                            minus_err = self.loss('train', predict_minus)
-          
-                            theta_approx = np.append(theta_approx, ((plus_err - minus_err) / (2 * epsilon)))
-                            theta_calc = np.append(theta_calc, self.cache_dw[i][y][x])
-                        # end for y
-                        if x%100 == 0:
-                            print("GC count; weights x: ", x)
-                    # end for x
-                    
-                elif (j == 1):
-                    for x in range(i, self.bias[i].shape[0]):
-                        # derivative approximation for bias_i
-                        weights_copy = copy.deepcopy(self.weights)
-                        bias_copy_plus = copy.deepcopy(self.bias)
-                        weights_copy = copy.deepcopy(self.weights)
-                        bias_copy_minus = copy.deepcopy(self.bias)
-                        bias_copy_plus[i][x] = bias_copy_plus[i][x] + epsilon
-                        bias_copy_minus[i][x] = bias_copy_minus[i][x] - epsilon
-                        
-                        self.forward_propagate(weights=weights_copy, bias=bias_copy_plus)
-                        predict_plus = self.cache_a[-1]
-                        plus_err = self.loss('train', predict_plus)
-                              
-                        self.forward_propagate(weights=weights_copy, bias=bias_copy_minus)
-                        predict_minus = self.cache_a[-1]
-                        minus_err = self.loss('train', predict_minus)
-                        
-                        theta_approx = np.append(theta_approx, ((plus_err - minus_err) / (2 * epsilon)))
-                        theta_calc = np.append(theta_calc, self.cache_db[i][x])
-                    #end for x
-                    print("GC count; bias x: ", x)
-                #end if
-
-             #end for range(0,2)
-        #end for range(self.weights.size, 0, -1)
-        
-        #euclidean_dist = np.linalg.norm(theta_approx - theta_calc)
-        euclidean_dist = np.linalg.norm(theta_approx - theta_calc)
-        norm = np.linalg.norm(theta_approx) + np.linalg.norm(theta_calc)
-        grad_diffs = (euclidean_dist / norm)
-        
-        return grad_diffs
-    #end check_gradient
     
     def round(self, num=0):
         if (num-int(num))>=0.5:
