@@ -32,20 +32,31 @@ class neural_network:
     cache_train_error = []
     cache_cv_error = []
     cache_iterations = []
+    cache_mb_train_error = []
+    cache_mb_cv_error = []
+    cache_mb_iterations = []
     # learing rate
-    alpha = None
     weights = {}
     bias = {}
     buffer = {}
-    reg_lambda = 0
-    regularization = False
+    
+    regularization = True
+    reg_lambda = 0.00001
+    dropout = False
+    dropout_keep_prob = 0.8
+    
     data_min = 0
     data_max = 0
+    
     performance_measure = None
     last_layer_af = "softmax"
-    iterations = 2000
+    
+    early_stopping = False
+    mini_batch_size_n = -1 # 2^n
+    iterations = 10000
+    max_iterations = 100000
     alpha = 0.1
-    reg_lambda = 0.0001
+
     
     def __init__(self, data_loader, \
                      network_map=[], \
@@ -61,9 +72,10 @@ class neural_network:
         self.m['cv'] = self._dl.get_x('cv').shape[1]
         self.n = self._dl.get_x().shape[0]
         
+        # n x m
         self.data_samples['train'] = self._dl.get_x()
         self.labels['train'] = self._dl.get_y()
-
+        
         self.data_samples['cv'] = self._dl.get_x('cv')
         self.labels['cv'] = self._dl.get_y('cv')
         
@@ -88,13 +100,13 @@ class neural_network:
     
     def save_parameters(self):
         for l in self.weights:
-            with open('weights_l'+str(l)+'.txt', 'w') as outfile:
+            with open('parameters/weights_l'+str(l)+'.txt', 'w') as outfile:
                 outfile.write('# Weights for layer {0}; shape {1}\n'.format(l, self.weights[l].shape))
                 np.savetxt(outfile, self.weights[l])
             #end with
         #end for
         
-        with open('bias.txt', 'w') as outfile:
+        with open('parameters/bias.txt', 'w') as outfile:
             outfile.write('# Bias dict. length: {0}\n'.format(len(self.bias))) 
             for i in self.bias:
                 outfile.write('# Bias for layer {0}; shape {1}\n'.format(i, self.bias[i].shape))
@@ -107,10 +119,10 @@ class neural_network:
         try:
             i = 1
             for nl in self.network_map:
-                self.weights[i] = np.loadtxt('weights_l'+str(i)+'.txt')
+                self.weights[i] = np.loadtxt('parameters/weights_l'+str(i)+'.txt')
                 i = i + 1
             #end for
-            bias = np.loadtxt('bias.txt')            
+            bias = np.loadtxt('parameters/bias.txt')            
         except Exception as e:
             print("Weights/bias file read error. Initializing random parameters.")
             print("Error msg: "+str(e))
@@ -208,20 +220,19 @@ class neural_network:
         return 1 - np.power(self.tanh(z), 2)
     #end
 
-    def forward_propagate(self, kind='train', weights=False, bias=False, data=False):
-        if data == False:
-            data = np.array([])
-             
-        if data.any() == True:
-            X = data    
+    def forward_propagate(self, kind='train', weights=False, bias=False, data_in = [], dropout_in=True):
+        if len(data_in) != 0:
+            X = data_in
         elif kind == 'train' or kind == 'test' or kind == 'cv':
             X = self.data_samples[kind]
         else:
             return 0
         #end if
+        
         if weights == False:
             weights = self.weights
         #end if
+        
         if bias == False:
             bias = self.bias
         #end if
@@ -251,13 +262,25 @@ class neural_network:
                 layer_a = self.tanh(layer_z)
             #end if
             np.nan_to_num(layer_a, False)
+            if(dropout_in and self.dropout and i < len(self.network_map)):
+                # if hidden units and dropout then apply dropout
+                dx = np.random.rand(layer_a.shape[0], layer_a.shape[1]) < self.dropout_keep_prob
+                layer_a = np.multiply(layer_a, dx)
+                layer_a /= self.dropout_keep_prob
+            #end if dropout
+            
             self.cache_a.append(layer_a)
         #end for
     #end forwardPropagate
     
-    def back_propagate(self, kind='train'):
+    def back_propagate(self, kind='train', labels_in=[]):
         if kind != 'train' and kind != 'test' and kind != 'cv':
             return 0
+        #end if
+        if len(labels_in) != 0:
+            labels = labels_in
+        else:
+            labels = self.labels[kind]
         #end if
         # e.g. range(2, 0) = [2, 1]
         n_depth = len(self.network_map)
@@ -267,16 +290,16 @@ class neural_network:
         for i in range(n_depth, 0, -1):
             if i == n_depth:
                 # last layer sigmoid / softmax
-                dz = (self.cache_a[i] - self.labels[kind])
+                dz = (self.cache_a[i] - labels)
             else:
                 # i = 1; s1 contain n1 neurons; (n1, m) = (n1, n2) x (n2, m) * (n1, m)
                 dz = np.dot(self.weights[i+1].T, prev_dz)*self.d_tanh(self.cache_z[i])
             prev_dz = dz
             self.cache_dw[i] = np.dot(dz, self.cache_a[i-1].T) / self.m[kind]
             self.cache_db[i] = np.sum(dz, axis=1, keepdims=True) / self.m[kind]
-            # no regularization
-            if(self.regularization):
-                reg = (self.reg_lambda * self.weights[i]) / self.m[kind]
+            # no dropout regularization
+            if(self.regularization and not self.dropout):
+                reg = (self.reg_lambda * self.weights[i]) / (2 * self.m[kind])
             else:
                 reg = 0;
             self.weights[i] = self.weights[i] - self.alpha * (self.cache_dw[i] + reg)
@@ -284,27 +307,56 @@ class neural_network:
     #end backPropagate
     
     def learn(self, gradient_check = False):
-        for i in range(0, self.iterations):
-            ##print('----------------------------------------------')
-            #print(i)
-            self.forward_propagate()
-            self.back_propagate()
+        iterate = True
+        cv_err_prev = -1
+        cv_err = -1
+        i = 0
+        batch_i = 0
+        if(self.mini_batch_size_n != -1):
+            mb_size = np.power(2, self.mini_batch_size_n)
+            batches_count = int(self.m['train'] / mb_size) + 1
+        else:
+            mb_size = 0
+            batches_count = 0
+        #end if            
+        while iterate:
+            # Early stopping condition
+            i += 1
+            if(self.early_stopping):
+                cv_err_prev = cv_err
+                cv_err = self.get_cv_error()
+                if(self.max_iterations <= i or (i > 10 and cv_err_prev != -1 and cv_err_prev <= cv_err)):
+                    iterate = False
+                #end if
+            elif(self.iterations <= i):
+                iterate = False
+            #end if
+            
+            if(self.mini_batch_size_n == -1):
+                # Batch gd
+                self.batch_gd(i)
+            else:
+                # Mini-batch gd
+                batch_i = (i-1) * mb_size
+                self.mini_batch_gd(batches_count, mb_size, batch_i)
+            #end if
+            
             # optional gradient check
-            if gradient_check == True and i != 0 and i%1000 == 0:
+            if gradient_check == True and (iterate == False or i == 1):
                 grad_diffs = self.performance_measure.check_gradients()
                 print("Gradient chack after %1d iterations: %10.10f" % (i, grad_diffs))
-            if i%50 == 0:
-                training_error = self.get_train_error()
-                print("Training error after %1d iterations: %10.10f" % (i, training_error))
-                self.cache_train_error.append(training_error)
-                self.cache_cv_error.append(self.get_cv_error())
-                #self.cache_test_error.append(self.get_test_error())
-                self.cache_iterations.append(i)
-        #end for
+            #end if
+            
+        #end while
         
         self.performance_measure.performance('cv')
-        
-        print("Last train error: ", self.cache_train_error[-1])
+        if(self.mini_batch_size_n == -1):
+            # batch gd
+            print("Last train error: ", self.cache_train_error[-1])
+        else:
+            # mini-batch gd
+            print("Last train error: ",self.get_train_error())
+        #end if
         print("Last cv error: ", self.cache_cv_error[-1])
         plt.plot(self.cache_iterations, self.cache_train_error)
         plt.plot(self.cache_iterations, self.cache_cv_error)
@@ -315,6 +367,43 @@ class neural_network:
         plt.show()
         self.save_parameters()
     #end learn
+    
+    def batch_gd(self, i):
+        self.forward_propagate()
+        self.back_propagate()
+    
+        if i%100 == 0 or i == 1:
+            training_error = self.get_train_error()
+            print("Training error after %1d iterations: %10.10f" % (i, training_error))
+            self.cache_train_error.append(training_error)
+            self.cache_cv_error.append(self.get_cv_error())
+            #self.cache_test_error.append(self.get_test_error())
+            self.cache_iterations.append(i)
+        #end if
+    #end batch_gd
+    
+    def mini_batch_gd(self, batches_count, mb_size, batch_i):       
+        for j in range(1, batches_count):
+            batch_i += 1
+            idx_start = mb_size * (j-1)
+            idx_end = self.m['train'] if j == batches_count else mb_size * j
+            data_mb = self.data_samples['train'][:, idx_start:idx_end]
+            labels_mb = self.labels['train'][:, idx_start:idx_end]
+            self.forward_propagate(data_in=data_mb)
+            cache_a_temp = self.cache_a
+            cache_z_temp = self.cache_z
+            if batch_i%5 == 0 or batch_i == 1:
+                # cost 
+                train_error_mb = self.performance_measure.loss(kind='train', labels_in=labels_mb, m_in=data_mb.shape[1])
+                self.cache_train_error.append(train_error_mb)
+                self.cache_cv_error.append(self.get_cv_error())
+                self.cache_iterations.append(batch_i)
+            #end if
+            self.cache_z = cache_z_temp
+            self.cache_a = cache_a_temp
+            self.back_propagate(labels_in=labels_mb)
+        #end for
+    #end mini_batch_gd
     
     def get_train_error(self):
         pred = self.predict('train')
@@ -330,8 +419,8 @@ class neural_network:
         return self.performance_measure.loss('cv', pred)
     #end
     
-    def predict(self, kind = 'train', custom_data=False, output="raw"):
-        self.forward_propagate(kind, data=custom_data)
+    def predict(self, kind='train', custom_data=[], output="raw"):
+        self.forward_propagate(kind, data_in=custom_data, dropout_in=False)
         if(output == "raw"):    
             return self.cache_a[-1]
         elif(output == "boolean"):

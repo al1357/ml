@@ -55,11 +55,11 @@ class performance_measure:
                             weights_copy_minus[i][y][x] = weights_copy_minus[i][y][x] - epsilon
                             
                             # todo: to improve speed don't calculate on all training samples
-                            self.nn.forward_propagate(weights=weights_copy_plus, bias=bias_copy)
+                            self.nn.forward_propagate(weights=weights_copy_plus, bias=bias_copy, dropout_in=False)
                             predict_plus = self.nn.cache_a[-1]
                             plus_err = self.loss('train', predict_plus)
                                   
-                            self.nn.forward_propagate(weights=weights_copy_minus, bias=bias_copy)
+                            self.nn.forward_propagate(weights=weights_copy_minus, bias=bias_copy, dropout_in=False)
                             predict_minus = self.nn.cache_a[-1]
                             minus_err = self.loss('train', predict_minus)
           
@@ -80,11 +80,11 @@ class performance_measure:
                         bias_copy_plus[i][x] = bias_copy_plus[i][x] + epsilon
                         bias_copy_minus[i][x] = bias_copy_minus[i][x] - epsilon
                         
-                        self.nn.forward_propagate(weights=weights_copy, bias=bias_copy_plus)
+                        self.nn.forward_propagate(weights=weights_copy, bias=bias_copy_plus, dropout_in=False)
                         predict_plus = self.nn.cache_a[-1]
                         plus_err = self.loss('train', predict_plus)
                               
-                        self.nn.forward_propagate(weights=weights_copy, bias=bias_copy_minus)
+                        self.nn.forward_propagate(weights=weights_copy, bias=bias_copy_minus, dropout_in=False)
                         predict_minus = self.nn.cache_a[-1]
                         minus_err = self.loss('train', predict_minus)
                         
@@ -106,16 +106,28 @@ class performance_measure:
         return grad_diffs
     #end check_gradient  
     
-    def loss(self, kind='train', pred = None):
-        if kind == 'train' or kind == 'test' or kind == 'cv':
+    def loss(self, kind='train', pred_in = [], labels_in = [], m_in = None):
+        if len(labels_in) != 0:
+            labels = labels_in
+        elif kind == 'train' or kind == 'test' or kind == 'cv':
             labels = self.nn.labels[kind]
         else:
             return 0
         #end if
-        
-        if kind == 'train':
+
+        if len(pred_in) != 0:
+            pred = pred_in
+        elif kind == 'train':
             pred = self.nn.cache_a[-1]
-        elif pred is None:
+        else:
+            return
+        #end if
+        
+        if m_in != None:
+            m_local = m_in
+        elif kind == 'train' or kind == 'test' or kind == 'cv': 
+            m_local = self.nn.m[kind]
+        else:
             return
         #end if
         
@@ -126,33 +138,33 @@ class performance_measure:
                 weights_sum += np.sum(np.square(self.nn.weights[k]))
                 # L1
                 #weights_sum += np.sum(self.nn.weights[k])
-            reg = (self.nn.reg_lambda * weights_sum) / (2 * self.nn.m[kind])
+            reg = (self.nn.reg_lambda * weights_sum) / (2 * m_local)
         else:
             reg = 0
         #end if
         
         if self.nn.last_layer_af == "softmax":
-            return self.categorical_crossentropy(kind, labels, pred, reg)
+            return self.categorical_crossentropy(kind, labels, pred, reg, m_local)
         else:
-            return self.binary_crossentropy(kind, labels, pred, reg) 
+            return self.binary_crossentropy(kind, labels, pred, reg, m_local)
         #end if
     #end loss
 
-    def binary_crossentropy(self, kind, labels, pred, reg):
+    def binary_crossentropy(self, kind, labels, pred, reg, m_in):
         '''sigmoid''' 
         product_true = labels*pred
         product_false = (1-labels)*pred
         product_true = product_true[product_true!=0]
         product_false = product_false[product_false!=0]
-        loss = -(np.sum(np.sum(np.log(product_true)) + np.sum(np.log(1-product_false))) / self.nn.m[kind]) + reg
+        loss = -(np.sum(np.sum(np.log(product_true)) + np.sum(np.log(1-product_false))) / m_in) + reg
         ##loss = -(np.sum(labels*(np.log(pred)) + (1-labels)*(np.log(1-pred))) / self.nn.m[kind]) + reg
         return loss
     #end binary_crossentropy
 
-    def categorical_crossentropy(self, kind, labels, pred, reg):
+    def categorical_crossentropy(self, kind, labels, pred, reg, m_in):
         '''softmax'''
         product = labels*pred
-        loss = -(np.sum((np.log(product[product!=0]))) / self.nn.m[kind]) + reg
+        loss = -(np.sum((np.log(product[product!=0]))) / m_in) + reg
         return loss
     #end categorical_crossentropy
     
