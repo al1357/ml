@@ -95,7 +95,7 @@ class data_loader:
         self.x_min = np.min(x_all)
         self.x_max = np.max(x_all)
         
-        #split into sets
+        # split into sets
         if self.sets_distribution[0] != 0 and self.sets_distribution[0] < 1:
             m_cv = math.floor(m_train * self.sets_distribution[0])
             self.x_cv = x_all[0:m_cv, ...].T
@@ -116,6 +116,7 @@ class data_loader:
             self.y_test = np.array([])
         #end if    
               
+        m_train -= (m_cv + m_test)
         self.x_train = x_all[(m_cv+m_test):, ...].T
         self.y_train = y_all[(m_cv+m_test):, ...].T
     #end load_mnist
@@ -162,9 +163,48 @@ class data_loader:
             self.y_test = np.array([])
         #end if    
               
+        m_train -= (m_cv + m_test)
         self.x_train = x_all[(m_cv+m_test):, ...].T
         self.y_train = y_all[(m_cv+m_test):, ...].T
     #end load_iris
+    
+    def load_cars(self, csv_path="data/121229-tauris_estate-p.csv"):
+        data = pd.read_csv(csv_path)
+        # shuffle
+        data = data.sample(frac=1).reset_index(drop=True)
+        prices = data.pop('price')
+        x_all = np.array(data.iloc[:,:])
+        y_all = np.array(prices.iloc[:])
+        m_train = x_all.shape[0]
+        y_all = y_all.reshape((m_train, 1))
+        
+        self.x_min = np.min(x_all)
+        self.x_max = np.max(x_all)
+        
+        if self.sets_distribution[0] != 0 and self.sets_distribution[0] < 1:
+            m_cv = math.floor(m_train * self.sets_distribution[0])
+            self.x_cv = x_all[0:m_cv, ...].T
+            self.y_cv = y_all[0:m_cv, ...].T
+        else:
+            m_cv = 0
+            self.x_cv = np.array([])
+            self.y_cv = np.array([])
+        #end if
+
+        if self.sets_distribution[1] != 0 and self.sets_distribution[1] < 1:
+            m_test = math.floor(m_train * self.sets_distribution[1])
+            self.x_test = self.x_all[m_cv:(m_cv+m_test), ...].T
+            self.y_test = self.y_all[m_cv:(m_cv+m_test), ...].T
+        else:
+            m_test = 0
+            self.x_test = np.array([])
+            self.y_test = np.array([])
+        #end if
+        
+        m_train -= (m_cv+m_test)
+        self.x_train = x_all[(m_cv+m_test):, ...].T
+        self.y_train = y_all[(m_cv+m_test):, ...].T
+    #end load_cars
     
     def scale(self, data):
         return (data - self.x_min) / (self.x_max - self.x_min)
